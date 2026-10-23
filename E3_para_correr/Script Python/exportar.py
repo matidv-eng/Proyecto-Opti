@@ -45,10 +45,10 @@ def exportar_resultados(d, mod, var, costos, etapa_1, nombre, archivo):
     contenedores = []
     for n in abiertos:
         p = punto_en[n]
-        for fila in d["dotacion"]:
-            if fila["punto"] == p:
-                contenedores.append({"sitio": n, "punto": p, "origen": "existente", "tipo": fila["tipo"], "material": fila["material"],
-                                     "cantidad [cont]": fila["cantidad [cont]"], "capacidad [ton]": fila["capacidad [ton]"]})
+        for m in M:
+            if d["n_exist"][p, m] > 0:
+                contenedores.append({"sitio": n, "punto": p, "origen": "existente", "tipo": d["tipo_exist"][p, m], "material": m,
+                                     "cantidad [cont]": d["n_exist"][p, m], "capacidad [ton]": d["cap_exist"][p, m]})
         for c in C:
             nuevos = round(w[n, c].X) #a veces me daban numero muy cercano a un entero para eso el round
             if nuevos > 0:
@@ -79,7 +79,7 @@ def exportar_resultados(d, mod, var, costos, etapa_1, nombre, archivo):
                 paradas = [n for n in N if v[h, n, t].X > 0.5 and sum(valor(e[h, n, m, t]) for m in M) > 0]
                 recorridos.append({"camion": h, "semana": t, "paradas con retiro": ", ".join(paradas), "carga [ton]": sum(valor(e[h, n, m, t]) for n in N for m in M), "capacidad [ton]": d["cap_camion"][h]}) #sumamos para todas la ubicaciones y materiales
 
-    #resumen de cuanto se gastó por cada componente
+    #resumen de cuanto se gasto por cada componente
     resumen_costos = [{"componente": k, "monto [CLP]": round(valor(x) * MILLON), "% del presupuesto": round(100 * valor(x) * MILLON / d["presupuesto"], 1)} for k, x in costos.items()]
     resumen_costos.append({"componente": "Total gastado", "monto [CLP]": round(costo_total), "% del presupuesto": round(100 * costo_total / d["presupuesto"], 1)})
     resumen_costos.append({"componente": "Presupuesto", "monto [CLP]": d["presupuesto"], "% del presupuesto": 100})
