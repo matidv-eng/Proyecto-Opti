@@ -10,10 +10,10 @@ CARPETA_INSTANCIAS = os.path.join(CARPETA_RAIZ, "Instancias Excel")
 CARPETA_SALIDA = os.path.join(CARPETA_RAIZ, "Análisis de Excels")
 ARCHIVO_INSTANCIA = "instancia21oct.xlsx"
 
-#segundos maximos de cada etapa, la 1 maximiza toneladas y la 2 baja el costo
+#segundos maximos para maximiza toneladas
 #suman 30 min en total, el caso actual tiene menos tiempo porque las ubicaciones ya estan fijas y es mas facil
-TIEMPOS = {"optimo": (18 * 60, 4 * 60),
-           "ubicaciones_actuales": (6 * 60, 2 * 60)}
+TIEMPOS = {"optimo": 22 * 60,
+           "ubicaciones_actuales": 8 * 60}
 GAP = 0.005                #para cuando esta a menos de 0,5% del optimo
 SEMILLA = 0                #para obtener los mismos resultados
 HILOS = 4                  #con cuantos nucleos se va a resolver
@@ -116,10 +116,8 @@ def construir_modelo(d, fijar_ubicaciones_actuales=False):
     return mod, variables, costos, costo_total
 
 
-#se resuelve en dos etapas, la 1 maximiza las toneladas y la 2 baja el costo sin perder esas toneladas
-#asi no compra contenedores ni hace recorridos que no sirven
 def resolver(mod, variables, costo_total, nombre):
-    tiempo_etapa_1, tiempo_etapa_2 = TIEMPOS[nombre]   #segundos que tiene cada etapa en este escenario
+    tiempo_limite = TIEMPOS[nombre]   #segundos que tiene en este escenario
     mod.Params.Seed = SEMILLA
     mod.Params.Threads = HILOS
     mod.Params.MIPGap = GAP
@@ -128,15 +126,15 @@ def resolver(mod, variables, costo_total, nombre):
     tamano = {"variables": mod.NumVars, "binarias": mod.NumBinVars,
               "enteras": mod.NumIntVars - mod.NumBinVars, "restricciones": mod.NumConstrs}
 
-    #etapa 1, maximiza el material retirado que es el objetivo que se puso en construir_modelo
-    mod.Params.TimeLimit = tiempo_etapa_1
+    # maximiza el material retirado que es el objetivo que se puso en construir_modelo
+    mod.Params.TimeLimit = tiempo_limite
     mod.optimize()
     if mod.SolCount == 0:   #no encontro ninguna solucion factible, ese escenario no se exporta
         print(f"[{nombre}] El modelo no tiene solución.")
         return None
 
     #se guardan los resultados de la etapa 1 ahora porque en la etapa 2 cambia el objetivo y ObjVal pasa a ser el costo
-    etapa_1 = {
+    resumen_modelo = {
         "estado": f"Óptimo (gap <= {100 * GAP:g} %)" if mod.Status == GRB.OPTIMAL else "Límite de tiempo",   #optimo si llego al gap, si no se acabo el tiempo
         "toneladas": mod.ObjVal,        #toneladas retiradas en la mejor solucion
         "cota": mod.ObjBound,           #lo maximo que se podria retirar segun gurobi
@@ -145,17 +143,7 @@ def resolver(mod, variables, costo_total, nombre):
         **tamano,                       #agrega variables, binarias, enteras y restricciones al mismo diccionario
     }
 
-    #etapa 2, parte desde la solucion de la etapa 1 y no puede perder toneladas
-    for x in mod.getVars():
-        x.Start = x.X   #le pasa a gurobi la solucion de la etapa 1 como punto de partida
-    #tiene que retirar al menos lo mismo que en la etapa 1, el 1e-4 es un margen chico por redondeo
-    mod.addConstr(variables["e"].sum() >= etapa_1["toneladas"] - 1e-4, name="mantener_toneladas")
-    mod.setObjective(costo_total, GRB.MINIMIZE)   #ahora minimiza el costo
-    mod.Params.TimeLimit = tiempo_etapa_2
-    mod.optimize()
-    etapa_1["tiempo [s]"] += mod.Runtime   #suma el tiempo de la etapa 2 al total
-
-    return etapa_1   #el modelo queda con la solucion de la etapa 2 y esa es la que se exporta
+    return resumen_modelo  
 
 def main():
     os.makedirs(CARPETA_SALIDA, exist_ok=True)
