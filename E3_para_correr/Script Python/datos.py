@@ -40,6 +40,7 @@ def leer_instancia(ruta):
     d["u_no"] = dict(zip(materiales["material"], materiales["atractivo_no_reciclar [-]"])) #atractivo de no reciclar el material m
     d["superficie"] = dict(zip(sitios["sitio"], sitios["superficie [m2]"])) #superficie por ubicacion candidata n
     d["sitio_actual"] = dict(zip(puntos["punto"], puntos["sitio_actual"])) #puntos actuales
+    d["actual"] = {(p, n): 1 if d["sitio_actual"][p] == n else 0 for p in d["P"] for n in d["N"]} #binario, 1 si el punto p esta hoy en el sitio n (iota en el informe)
     d["nombre"] = dict(zip(puntos["punto"], puntos["nombre_sitio_actual"])) #nombre municipal de cada punto actual
 
     d["cap_cont"] = dict(zip(tipos["tipo"], tipos["capacidad [ton/cont]"])) #capacidad por cada tipo de contenedor c
@@ -65,12 +66,16 @@ def leer_instancia(ruta):
     d["u_sitio"] = {(i, n): u for i, n, u in zip(atr_sitios["sector"], atr_sitios["sitio"], atr_sitios["atractivo [-]"])} #atractivo de reciclar desde sector i a ubicacion n
     d["u_alt"] = {(i, o): u for i, o, u in zip(atr_alt["sector"], atr_alt["alternativa"], atr_alt["atractivo [-]"])} #atractivo de usar la alternativa o desde el sector i
 
-    d["cap_camion"] = dict(zip(camiones["camion"], camiones["capacidad [ton/recorrido]"])) #cap por recorrido de cada camion
-    d["costo_recorrido"] = dict(zip(camiones["camion"], camiones["costo_recorrido [CLP/recorrido]"])) #costo de cada camion por operar un recorrido
+    #cada recorrido puede parar en varios puntos limpios
+    d["cap_camion"] = dict(zip(camiones["camion"], camiones["capacidad [ton/recorrido]"])) #peso que carga cada camion por recorrido
+    d["vol_camion"] = dict(zip(camiones["camion"], camiones["volumen [m3/recorrido]"])) #volumen que carga cada camion por recorrido
+    d["costo_recorrido"] = dict(zip(camiones["camion"], camiones["costo_recorrido [CLP/recorrido]"])) #costo de cada recorrido de cada camion
+    d["densidad"] = dict(zip(materiales["material"], materiales["densidad [ton/m3]"])) #densidad de cada material para pasar de toneladas a volumen
 
     valores = dict(zip(costos["parametro"], costos["valor"]))
     d["costo_habilitacion"] = valores["cH"] #costo de habilitar una ubicacion nueva (incluye trasladar los contenedores)
     d["presupuesto"] = valores["B"]         #presupuesto anual
-    d["F"] = valores["F"]                   #visitas maximas por semana de toda la flota
+    d["costo_parada"] = valores["cP"]       #costo de cada parada de un camion en un punto limpio, igual para todos los camiones
+    d["J"] = valores["J"]                   #recorridos maximos de cada camion por semana
 
     return d
