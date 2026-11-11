@@ -117,6 +117,17 @@ def exportar_resultados(d, mod, var, costos, solucion, archivo):
                                    "carga [ton]": sum(valor(e[h, n, m, t]) for n in N for m in M), "capacidad [ton]": d["cap_camion"][h] * veces,
                                    "volumen usado [m3]": sum(valor(e[h, n, m, t]) / d["densidad"][m] for n in N for m in M), "volumen disponible [m3]": d["vol_camion"][h] * veces})
 
+    #una fila por camion, semana y sitio donde paro, para poder sumar o filtrar las paradas de cada punto
+    paradas_por_punto = []
+    for h in H:
+        for t in T:
+            for n in N:
+                veces = round(v[h, n, t].X)
+                if veces > 0:
+                    paradas_por_punto.append({"camion": h, "semana": t, "sitio": n, "punto": punto_en.get(n, "sin punto"), "paradas": veces,
+                                              "retirado [ton]": sum(valor(e[h, n, m, t]) for m in M),
+                                              "volumen retirado [m3]": sum(valor(e[h, n, m, t]) / d["densidad"][m] for m in M)})
+
     #resumen de cuanto se gasto por cada componente
     resumen_costos = [{"componente": k, "monto [CLP]": round(valor(c) * MILLON), "% del presupuesto": round(100 * valor(c) * MILLON / d["presupuesto"], 1)} for k, c in costos.items()]
     resumen_costos.append({"componente": "Total gastado", "monto [CLP]": round(costo_total), "% del presupuesto": round(100 * costo_total / d["presupuesto"], 1)})
@@ -131,6 +142,7 @@ def exportar_resultados(d, mod, var, costos, solucion, archivo):
         pd.DataFrame(recolectado).to_excel(excel, sheet_name="Recolectado", index=False)
         pd.DataFrame(reporte_por_semana).to_excel(excel, sheet_name="Reporte por Semana", index=False)
         pd.DataFrame(recorridos).to_excel(excel, sheet_name="Recorridos por Semana", index=False)
+        pd.DataFrame(paradas_por_punto).to_excel(excel, sheet_name="Paradas por Punto", index=False)
         pd.DataFrame(resumen_costos).to_excel(excel, sheet_name="Resumen de Costos", index=False)
 
     print(f"Resultados guardados en {archivo}")
