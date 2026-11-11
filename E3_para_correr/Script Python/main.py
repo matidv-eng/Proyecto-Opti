@@ -105,10 +105,10 @@ def construir_modelo(d):
                     for h in H for t in T), name="R17")
     #R18 en cada recorrido un camion para a lo mas una vez en cada punto
     mod.addConstrs((v[h, n, t] <= x[h, t] for h in H for n in N for t in T), name="R18")
-    #R19 cada camion hace como mucho J recorridos por semana
-    mod.addConstrs((x[h, t] <= d["J"] for h in H for t in T), name="R19")
-    #R20 un camion solo para donde opera un punto limpio, J no limita nada mas porque v <= x <= J
-    mod.addConstrs((v[h, n, t] <= d["J"] * opera[n] for h in H for n in N for t in T), name="R20")
+    #R19 cada camion hace como mucho j recorridos por semana
+    mod.addConstrs((x[h, t] <= d["j"] for h in H for t in T), name="R19")
+    #R20 un camion solo para donde opera un punto limpio, j no limita nada mas porque v <= x <= j
+    mod.addConstrs((v[h, n, t] <= d["j"] * opera[n] for h in H for n in N for t in T), name="R20")
 
     #funcion objetivo, maximizar el material que se recicla en toda la comuna
     #lo que llevan los vecinos a los puntos limpios, menos lo que se pierde por capacidad, mas lo que llevan a alternativas

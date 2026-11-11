@@ -76,6 +76,6 @@ def leer_instancia(ruta):
     d["costo_habilitacion"] = valores["cH"] #costo de habilitar una ubicacion nueva (incluye trasladar los contenedores)
     d["presupuesto"] = valores["B"]         #presupuesto anual
     d["costo_parada"] = valores["cP"]       #costo de cada parada de un camion en un punto limpio, igual para todos los camiones
-    d["J"] = valores["J"]                   #recorridos maximos de cada camion por semana
+    d["j"] = valores["j"]                   #recorridos maximos de cada camion por semana
 
     return d
