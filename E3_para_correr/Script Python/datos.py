@@ -77,5 +77,6 @@ def leer_instancia(ruta):
     d["presupuesto"] = valores["B"]         #presupuesto anual
     d["costo_parada"] = valores["cP"]       #costo de cada parada de un camion en un punto limpio, igual para todos los camiones
     d["j"] = valores["j"]                   #recorridos maximos de cada camion por semana
+    d["epsilon"] = valores["epsilon"]       #peso del costo en la funcion objetivo [ton/CLP], solo desempata entre soluciones con las mismas toneladas
 
     return d

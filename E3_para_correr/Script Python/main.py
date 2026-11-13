@@ -54,20 +54,20 @@ def construir_modelo(d):
 
     #R4 a R7 son la eleccion de los vecinos con el logit linealizado
     #R4 el material de cada sector se reparte entre los puntos limpios y no llevarlo a ninguno
-    mod.addConstrs((gp.quicksum(q[i, n, m] for (j, n) in pares if j == i) + q0[i, m] == 1 for i in I for m in M), name="R4")
+    mod.addConstrs((gp.quicksum(q[i, n, m] for (i2, n) in pares if i2 == i) + q0[i, m] == 1 for i in I for m in M), name="R4")
     #R5 y R6 si el sitio opera la fraccion que recibe es proporcional a su atractivo, si no opera R6 no exige nada
     mod.addConstrs((q[i, n, m] <= d["u_sitio"][i, n] / eta[i, m] * q0[i, m] for (i, n) in pares for m in M), name="R5")
     mod.addConstrs((q[i, n, m] >= d["u_sitio"][i, n] / eta[i, m] * (q0[i, m] - (1 - opera[n])) for (i, n) in pares for m in M), name="R6")
     #R7 un sitio sin punto limpio no recibe nada
     mod.addConstrs((q[i, n, m] <= d["u_sitio"][i, n] / (d["u_sitio"][i, n] + eta[i, m]) * opera[n] for (i, n) in pares for m in M), name="R7")
     #R8 lo que llevan los vecinos a n se recibe, y lo que no cabe en los contenedores se pierde
-    mod.addConstrs((gp.quicksum(d["poblacion"][i] * d["gen"][i, m] * d["sigma"][t] * q[i, n, m] for (i, j) in pares if j == n)
+    mod.addConstrs((gp.quicksum(d["poblacion"][i] * d["gen"][i, m] * d["sigma"][t] * q[i, n, m] for (i, n2) in pares if n2 == n)
                     == r[n, m, t] + l[n, m, t] for n in N for m in M for t in T), name="R8")
 
     for n in N:
         for m in M:
-            for k, t in enumerate(T):
-                anterior = s[n, m, T[k - 1]] if k > 0 else 0   #los puntos parten vacios
+            for pos, t in enumerate(T):
+                anterior = s[n, m, T[pos - 1]] if pos > 0 else 0   #los puntos parten vacios
                 #R9 lo que estaba guardado mas lo recibido tiene que caber en los contenedores
                 mod.addConstr(anterior + r[n, m, t] <= capacidad[n, m], name=f"R9[{n},{m},{t}]")
                 #R10 balance de lo almacenado
@@ -96,7 +96,8 @@ def construir_modelo(d):
         "Recorridos de camiones": gp.quicksum(d["costo_recorrido"][h] / MILLON * x[h, t] for h in H for t in T),
         "Paradas de camiones": d["costo_parada"] / MILLON * v.sum(),
     }
-    mod.addConstr(gp.quicksum(costos.values()) <= d["presupuesto"] / MILLON, name="R15")
+    costo_total = gp.quicksum(costos.values())   #gasto anual en millones, la misma expresion de R15
+    mod.addConstr(costo_total <= d["presupuesto"] / MILLON, name="R15")
 
     #R16 lo que retira un camion en la semana, sumando todas sus paradas, cabe en su capacidad en peso por los recorridos que hace
     mod.addConstrs((e.sum(h, "*", "*", t) <= d["cap_camion"][h] * x[h, t] for h in H for t in T), name="R16")
@@ -116,7 +117,9 @@ def construir_modelo(d):
     #las fracciones semanales suman 1, por eso lo que lleva un sector en el año es poblacion * gen * q
     llega = gp.quicksum(d["poblacion"][i] * d["gen"][i, m] * q[i, n, m] for (i, n) in pares for m in M)
     alternativas = gp.quicksum(d["poblacion"][i] * d["gen"][i, m] * psi[i, m] / eta[i, m] * q0[i, m] for i in I for m in M)
-    mod.setObjective(llega - l.sum() + alternativas, GRB.MAXIMIZE)
+    #menos epsilon por el gasto: epsilon esta en ton/CLP y el gasto en millones, por eso se multiplica por MILLON
+    #es tan chico que nunca cambia una tonelada por plata, solo elige la mas barata entre soluciones con las mismas toneladas
+    mod.setObjective(llega - l.sum() + alternativas - d["epsilon"] * MILLON * costo_total, GRB.MAXIMIZE)
 
     variables = {"z": z, "w": w, "q": q, "q0": q0, "r": r, "l": l, "s": s, "e": e, "v": v, "x": x,
                  "opera": opera, "capacidad": capacidad, "pares": pares, "psi": psi, "eta": eta}
@@ -138,8 +141,8 @@ def resolver(mod):
 
     return {
         "estado": "Óptimo" if mod.Status == GRB.OPTIMAL else "Límite de tiempo",   #optimo si cerro el gap, si no se acabo el tiempo
-        "toneladas": mod.ObjVal,        #toneladas recicladas en la comuna en la mejor solucion
-        "cota": mod.ObjBound,           #lo maximo que se podria reciclar segun gurobi
+        "fo": mod.ObjVal,               #valor de la funcion objetivo en la mejor solucion [ton]
+        "cota": mod.ObjBound,           #cota superior de la funcion objetivo segun gurobi [ton]
         "gap [%]": 100 * mod.MIPGap,    #si no cerro en 30 min este es el gap final que se reporta
         "tiempo [s]": mod.Runtime,
         **tamano,                       #agrega variables, binarias, enteras y restricciones al mismo diccionario

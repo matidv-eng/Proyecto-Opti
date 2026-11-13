@@ -25,10 +25,12 @@ def exportar_resultados(d, mod, var, costos, solucion, archivo):
 
     # Resumen general
     costo_total = sum(valor(c) for c in costos.values()) * MILLON
+    recibido_total = sum(valor(r[n, m, t]) for n in N for m in M for t in T)
     resumen = {
         "estado": solucion["estado"],
-        "reciclado total [ton]": solucion["toneladas"],                                         #funcion objetivo, puntos limpios mas alternativas
-        "reciclado en puntos limpios [ton]": sum(valor(r[n, m, t]) for n in N for m in M for t in T),
+        "reciclado total [ton]": recibido_total + sum(a_alternativas.values()),                   #puntos limpios mas alternativas
+        "funcion objetivo [ton]": solucion["fo"],                                                  #reciclado total menos epsilon por el gasto
+        "reciclado en puntos limpios [ton]": recibido_total,
         "reciclado en alternativas [ton]": sum(a_alternativas.values()),
         "perdido por capacidad [ton]": sum(valor(l[n, m, t]) for n in N for m in M for t in T),
         "no reciclado [ton]": sum(no_reciclado.values()),
