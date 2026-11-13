@@ -1,7 +1,9 @@
 import pandas as pd
 
+#lee la instancia y guarda cada conjunto y parametro con el mismo nombre que tiene en el informe (seccion 5)
+
 def leer_instancia(ruta):
-    hojas = pd.read_excel(ruta, sheet_name=None)  
+    hojas = pd.read_excel(ruta, sheet_name=None)
 
     sectores = hojas["Sectores"]
     sitios = hojas["Sitios"]
@@ -20,63 +22,61 @@ def leer_instancia(ruta):
     d = {}
 
     #conjuntos
-    d["I"] = list(sectores["sector"])                        
-    d["N"] = list(sitios["sitio"])                           
-    d["P"] = list(puntos["punto"])                           
-    d["M"] = list(materiales["material"])                    
-    d["C"] = list(tipos["tipo"])                             
-    d["H"] = list(camiones["camion"])                        
-    d["T"] = list(semanas["semana"])                         
-    d["K"] = list(sitios["macrozona"].unique())              
-    d["O"] = list(alternativas["alternativa"].unique())      
+    d["I"] = list(sectores["sector"])                        #sectores censales
+    d["N"] = list(sitios["sitio"])                           #ubicaciones candidatas
+    d["P"] = list(puntos["punto"])                           #puntos limpios existentes
+    d["M"] = list(materiales["material"])                    #materiales
+    d["C"] = list(tipos["tipo"])                             #tipos de contenedores nuevos
+    d["H"] = list(camiones["camion"])                        #tipos de camion
+    d["T"] = list(semanas["semana"])                         #semanas
+    d["K"] = list(sitios["macrozona"].unique())              #macrozonas
+    d["O"] = list(alternativas["alternativa"].unique())      #alternativas externas
 
     #subconjuntos
-    d["N_k"] = {k: list(sitios[sitios["macrozona"] == k]["sitio"]) for k in d["K"]} #subconjunto de ubicaciones candidatas por macrozona k
-    d["C_m"] = {m: list(tipos[tipos["material"] == m]["tipo"]) for m in d["M"]} #subconjunto de tipos de contenedores por cada material m
-    d["O_m"] = {m: list(alternativas[alternativas["material"] == m]["alternativa"]) for m in d["M"]} #subconjunto de alternativas por cada material m
+    d["N_k"] = {k: list(sitios[sitios["macrozona"] == k]["sitio"]) for k in d["K"]}             #ubicaciones de la macrozona k
+    d["C_m"] = {m: list(tipos[tipos["material"] == m]["tipo"]) for m in d["M"]}                  #contenedores que reciben el material m
+    d["O_m"] = {m: list(alternativas[alternativas["material"] == m]["alternativa"]) for m in d["M"]}  #alternativas que reciben el material m
 
-    #parámetros
-    d["poblacion"] = dict(zip(sectores["sector"], sectores["poblacion [hab]"])) #poblacion por sector
-    d["u_no"] = dict(zip(materiales["material"], materiales["atractivo_no_reciclar [-]"])) #atractivo de no reciclar el material m
-    d["superficie"] = dict(zip(sitios["sitio"], sitios["superficie [m2]"])) #superficie por ubicacion candidata n
-    d["sitio_actual"] = dict(zip(puntos["punto"], puntos["sitio_actual"])) #puntos actuales
-    d["actual"] = {(p, n): 1 if d["sitio_actual"][p] == n else 0 for p in d["P"] for n in d["N"]} #binario, 1 si el punto p esta hoy en el sitio n (iota en el informe)
-    d["nombre"] = dict(zip(puntos["punto"], puntos["nombre_sitio_actual"])) #nombre municipal de cada punto actual
+    #datos auxiliares que no son parametros del modelo, sirven para construir otros o para exportar los resultados
+    sitio_actual = dict(zip(puntos["punto"], puntos["sitio_actual"]))                  #sitio donde opera hoy cada punto
+    d["sitio_actual"] = sitio_actual
+    d["nombre"] = dict(zip(puntos["punto"], puntos["nombre_sitio_actual"]))            #nombre municipal de cada punto
+    d["material_de"] = dict(zip(tipos["tipo"], tipos["material"]))                     #material que recibe cada tipo de contenedor
 
-    d["cap_cont"] = dict(zip(tipos["tipo"], tipos["capacidad [ton/cont]"])) #capacidad por cada tipo de contenedor c
-    d["area_cont"] = dict(zip(tipos["tipo"], tipos["superficie [m2/cont]"])) #superficie que ocupa cada tipo de contenedor c
-    d["costo_compra"] = dict(zip(tipos["tipo"], tipos["costo_compra [CLP/cont]"])) #costo de comprar el contenedor c (una vez en el horizonte)
-    d["costo_mant"] = dict(zip(tipos["tipo"], tipos["costo_mantencion [CLP/cont/año]"])) #costo de mantener el contenedor c
-    d["material_de"] = dict(zip(tipos["tipo"], tipos["material"])) #contenedor que material recibe
+    #parametros, con el nombre del informe
+    d["nu"] = dict(zip(sectores["sector"], sectores["poblacion [hab]"]))                                      #nu_i poblacion [hab]
+    d["g"] = {(i, m): g for i, m, g in zip(generacion["sector"], generacion["material"],
+                                            generacion["generacion [ton/hab/año]"])}                           #g_im generacion [ton/(hab*año)]
+    d["sigma"] = dict(zip(semanas["semana"], semanas["fraccion_generacion [-]"]))                             #sigma_t fraccion semanal [-]
+    d["u"] = {(i, n): u for i, n, u in zip(atr_sitios["sector"], atr_sitios["sitio"], atr_sitios["atractivo [-]"])}   #u_in atractivo de la ubicacion [-]
+    d["A"] = list(d["u"].keys())                                                                              #conjunto A, pares sector-ubicacion dentro de la distancia maxima
+    d["psi"] = {(i, o): u for i, o, u in zip(atr_alt["sector"], atr_alt["alternativa"], atr_alt["atractivo [-]"])}    #psi_io atractivo de la alternativa [-]
+    d["phi_N"] = dict(zip(materiales["material"], materiales["atractivo_no_reciclar [-]"]))                   #phi^N_m atractivo de no reciclar [-]
+    d["iota"] = {(p, n): 1 if sitio_actual[p] == n else 0 for p in d["P"] for n in d["N"]}                    #iota_pn vale 1 si el punto p opera hoy en n [-]
 
-    #contenedores que ya tiene cada punto limpio
-    punto_de = dict(zip(puntos["nombre_sitio_actual"], puntos["punto"])) #nombre y su numero de punto
-    p_dot = [punto_de[nombre] for nombre in dotacion["punto"]]
-    filas = list(zip(p_dot, dotacion["material"], dotacion["tipo_existente"], dotacion["cantidad [cont/punto]"],
-                     dotacion["capacidad_util [ton/cont]"], dotacion["superficie [m2/cont]"]))
-    d["tipo_exist"] = {(p, m): tipo for p, m, tipo, n, cap, area in filas} #tipo de contenedor existente del punto p para el material m
-    d["n_exist"] = {(p, m): n for p, m, tipo, n, cap, area in filas} #cantidad de contenedores existentes del punto p para el material m
-    d["cap_exist"] = {(p, m): n * cap for p, m, tipo, n, cap, area in filas} #capacidad existente [ton] del punto p para el material m
-    d["area_exist"] = {p: sum(n * area for q, m, tipo, n, cap, area in filas if q == p) for p in d["P"]} #superficie [m2] de los contenedores existentes del punto p
+    #contenedores existentes de cada punto (DotacionActual)
+    punto_de = dict(zip(puntos["nombre_sitio_actual"], puntos["punto"]))
+    filas = list(zip([punto_de[nombre] for nombre in dotacion["punto"]], dotacion["material"], dotacion["tipo_existente"],
+                     dotacion["cantidad [cont/punto]"], dotacion["capacidad_util [ton/cont]"], dotacion["superficie [m2/cont]"]))
+    d["tipo_exist"] = {(p, m): tipo for p, m, tipo, n, cap, area in filas}                                    #dato auxiliar para exportar
+    d["zeta_E"] = {(p, m): n for p, m, tipo, n, cap, area in filas}                                          #zeta^E_pm contenedores existentes [cont]
+    d["kappa_E"] = {(p, m): n * cap for p, m, tipo, n, cap, area in filas}                                   #kappa^E_pm capacidad existente [ton]
+    d["a_E"] = {p: sum(n * area for q, m, tipo, n, cap, area in filas if q == p) for p in d["P"]}             #a^E_p superficie existente [m2]
 
-    d["gen"] = {(i, m): g for i, m, g in zip(generacion["sector"], generacion["material"], generacion["generacion [ton/hab/año]"])} #generacion por material en cada sector
-    d["sigma"] = dict(zip(semanas["semana"], semanas["fraccion_generacion [-]"])) #generación por semana
-
-    #atractivo a reciclar y a las alternativas solo en los pares dentro de la distancia max
-    d["u_sitio"] = {(i, n): u for i, n, u in zip(atr_sitios["sector"], atr_sitios["sitio"], atr_sitios["atractivo [-]"])} #atractivo de reciclar desde sector i a ubicacion n
-    d["u_alt"] = {(i, o): u for i, o, u in zip(atr_alt["sector"], atr_alt["alternativa"], atr_alt["atractivo [-]"])} #atractivo de usar la alternativa o desde el sector i
-
-    #cada recorrido puede parar en varios puntos limpios
-    d["cap_camion"] = dict(zip(camiones["camion"], camiones["capacidad [ton/recorrido]"])) #peso que carga cada camion por recorrido
-    d["vol_camion"] = dict(zip(camiones["camion"], camiones["volumen [m3/recorrido]"])) #volumen que carga cada camion por recorrido
-    d["costo_recorrido"] = dict(zip(camiones["camion"], camiones["costo_recorrido [CLP/recorrido]"])) #costo de cada recorrido de cada camion
-    d["densidad"] = dict(zip(materiales["material"], materiales["densidad [ton/m3]"])) #densidad de cada material para pasar de toneladas a volumen
+    d["theta"] = dict(zip(tipos["tipo"], tipos["capacidad [ton/cont]"]))                  #theta_c capacidad de un contenedor nuevo [ton/cont]
+    d["alpha"] = dict(zip(tipos["tipo"], tipos["superficie [m2/cont]"]))                  #alpha_c superficie de un contenedor nuevo [m2/cont]
+    d["mu"] = dict(zip(sitios["sitio"], sitios["superficie [m2]"]))                       #mu_n superficie disponible [m2]
+    d["lambda"] = dict(zip(camiones["camion"], camiones["capacidad [ton/recorrido]"]))    #lambda_h capacidad en masa [ton/recorrido]
+    d["omega"] = dict(zip(camiones["camion"], camiones["volumen [m3/recorrido]"]))        #omega_h capacidad en volumen [m3/recorrido]
+    d["delta"] = dict(zip(materiales["material"], materiales["densidad [ton/m3]"]))       #delta_m densidad aparente [ton/m3]
+    d["gamma_C"] = dict(zip(tipos["tipo"], tipos["costo_compra [CLP/cont]"]))             #gamma^C_c costo de compra [CLP/cont]
+    d["rho_M"] = dict(zip(tipos["tipo"], tipos["costo_mantencion [CLP/cont/año]"]))       #rho^M_c costo de mantencion [CLP/(cont*año)]
+    d["gamma_R"] = dict(zip(camiones["camion"], camiones["costo_recorrido [CLP/recorrido]"]))  #gamma^R_h costo de un recorrido [CLP/recorrido]
 
     valores = dict(zip(costos["parametro"], costos["valor"]))
-    d["costo_habilitacion"] = valores["cH"] #costo de habilitar una ubicacion nueva (incluye trasladar los contenedores)
-    d["presupuesto"] = valores["B"]         #presupuesto anual
-    d["costo_parada"] = valores["cP"]       #costo de cada parada de un camion en un punto limpio, igual para todos los camiones
-    d["j"] = valores["j"]                   #recorridos maximos de cada camion por semana
-    d["epsilon"] = valores["epsilon"]       #peso del costo en la funcion objetivo [ton/CLP], solo desempata entre soluciones con las mismas toneladas
+    d["gamma_H"] = valores["cH"]      #gamma^H costo de habilitacion por traslado [CLP/traslado]
+    d["gamma_V"] = valores["cP"]      #gamma^V costo de cada parada [CLP/parada]
+    d["j"] = valores["j"]             #j recorridos maximos por camion y semana
+    d["b"] = valores["B"]             #b presupuesto anual [CLP]
 
     return d

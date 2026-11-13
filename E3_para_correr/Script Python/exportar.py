@@ -10,27 +10,25 @@ def valor(x):
 
 def exportar_resultados(d, mod, var, costos, solucion, archivo):
     N, M, C, H, T, P, I = d["N"], d["M"], d["C"], d["H"], d["T"], d["P"], d["I"]
-    z, w, q, q0, r, l, s, e, v, x, opera, capacidad, psi, eta = (var[k] for k in ["z", "w", "q", "q0", "r", "l", "s", "e", "v", "x", "opera", "capacidad", "psi", "eta"])
+    z, w, q, q0, r, l, s, e, v, x, opera, capacidad, psi_barra, eta = (var[k] for k in ["z", "w", "q", "q0", "r", "l", "s", "e", "v", "x", "opera", "capacidad", "psi_barra", "eta"])
     abiertos = [n for n in N if valor(opera[n]) > 0.5]                  #sitios donde quedo un punto limpio
     punto_en = {n: p for p in P for n in N if z[p, n].X > 0.5}         #que punto actual quedo en cada sitio abierto
 
     #a donde va el material de cada sector, lo que no llega a puntos limpios se reparte entre alternativas y no reciclar segun sus atractivos (logit)
-    generado = {(i, m): d["poblacion"][i] * d["gen"][i, m] for i in I for m in M}                      #toneladas al año
+    generado = {(i, m): d["nu"][i] * d["g"][i, m] for i in I for m in M}                      #toneladas al año
     a_puntos = {(i, m): 0 for i in I for m in M}
-    for (i, n) in var["pares"]:
+    for (i, n) in d["A"]:
         for m in M:
             a_puntos[i, m] += generado[i, m] * q[i, n, m].X
-    a_alternativas = {(i, m): generado[i, m] * psi[i, m] / eta[i, m] * q0[i, m].X for i in I for m in M}
-    no_reciclado = {(i, m): generado[i, m] * d["u_no"][m] / eta[i, m] * q0[i, m].X for i in I for m in M}
+    a_alternativas = {(i, m): generado[i, m] * psi_barra[i, m] / eta[i, m] * q0[i, m].X for i in I for m in M}
+    no_reciclado = {(i, m): generado[i, m] * d["phi_N"][m] / eta[i, m] * q0[i, m].X for i in I for m in M}
 
     # Resumen general
     costo_total = sum(valor(c) for c in costos.values()) * MILLON
-    recibido_total = sum(valor(r[n, m, t]) for n in N for m in M for t in T)
     resumen = {
         "estado": solucion["estado"],
-        "reciclado total [ton]": recibido_total + sum(a_alternativas.values()),                   #puntos limpios mas alternativas
-        "funcion objetivo [ton]": solucion["fo"],                                                  #reciclado total menos epsilon por el gasto
-        "reciclado en puntos limpios [ton]": recibido_total,
+        "reciclado total [ton]": solucion["toneladas"],                                         #funcion objetivo, puntos limpios mas alternativas
+        "reciclado en puntos limpios [ton]": sum(valor(r[n, m, t]) for n in N for m in M for t in T),
         "reciclado en alternativas [ton]": sum(a_alternativas.values()),
         "perdido por capacidad [ton]": sum(valor(l[n, m, t]) for n in N for m in M for t in T),
         "no reciclado [ton]": sum(no_reciclado.values()),
@@ -41,7 +39,7 @@ def exportar_resultados(d, mod, var, costos, solucion, archivo):
         "gap [%]": solucion["gap [%]"],
         "tiempo [s]": round(solucion["tiempo [s]"], 2),
         "costo_total [CLP]": round(costo_total),
-        "presupuesto [CLP]": d["presupuesto"],
+        "presupuesto [CLP]": d["b"],
         "variables": solucion["variables"],
         "variables binarias": solucion["binarias"],
         "variables enteras": solucion["enteras"],
@@ -82,18 +80,18 @@ def exportar_resultados(d, mod, var, costos, solucion, archivo):
     for n in abiertos:
         p = punto_en[n]
         for m in M:
-            if d["n_exist"][p, m] > 0:
+            if d["zeta_E"][p, m] > 0:
                 contenedores.append({"sitio": n, "punto": p, "origen": "existente", "tipo": d["tipo_exist"][p, m], "material": m,
-                                     "cantidad [cont]": d["n_exist"][p, m], "capacidad [ton]": d["cap_exist"][p, m]})
+                                     "cantidad [cont]": d["zeta_E"][p, m], "capacidad [ton]": d["kappa_E"][p, m]})
         for c in C:
             nuevos = round(w[n, c].X) #a veces me daban numero muy cercano a un entero para eso el round
             if nuevos > 0:
                 contenedores.append({"sitio": n, "punto": p, "origen": "nuevo", "tipo": c, "material": d["material_de"][c],
-                                     "cantidad [cont]": nuevos, "capacidad [ton]": nuevos * d["cap_cont"][c]})
+                                     "cantidad [cont]": nuevos, "capacidad [ton]": nuevos * d["theta"][c]})
 
     #cuanto recolecta (en fraccion) cada sitio n del material de cada sector i
     recolectado = []
-    for (i, n) in var["pares"]: #recorre todos los pares sector i ubicacion n que se encuentran dentro de la distancia max
+    for (i, n) in d["A"]: #recorre todos los pares sector i ubicacion n que se encuentran dentro de la distancia max
         for m in M:
             if q[i, n, m].X > 1e-6: #evitar fracciones muy cercanas o practicamente 0
                 recolectado.append({"sector": i, "sitio": n, "material": m, "fraccion [-]": q[i, n, m].X})
@@ -116,8 +114,8 @@ def exportar_resultados(d, mod, var, costos, solucion, archivo):
                 paradas = {n: round(v[h, n, t].X) for n in N if v[h, n, t].X > 0.5}
                 recorridos.append({"camion": h, "semana": t, "recorridos": veces,
                                    "paradas": ", ".join(f"{n} ({k})" for n, k in paradas.items()), "total paradas": sum(paradas.values()),
-                                   "carga [ton]": sum(valor(e[h, n, m, t]) for n in N for m in M), "capacidad [ton]": d["cap_camion"][h] * veces,
-                                   "volumen usado [m3]": sum(valor(e[h, n, m, t]) / d["densidad"][m] for n in N for m in M), "volumen disponible [m3]": d["vol_camion"][h] * veces})
+                                   "carga [ton]": sum(valor(e[h, n, m, t]) for n in N for m in M), "capacidad [ton]": d["lambda"][h] * veces,
+                                   "volumen usado [m3]": sum(valor(e[h, n, m, t]) / d["delta"][m] for n in N for m in M), "volumen disponible [m3]": d["omega"][h] * veces})
 
     #una fila por camion, semana y sitio donde paro, para poder sumar o filtrar las paradas de cada punto
     paradas_por_punto = []
@@ -128,12 +126,12 @@ def exportar_resultados(d, mod, var, costos, solucion, archivo):
                 if veces > 0:
                     paradas_por_punto.append({"camion": h, "semana": t, "sitio": n, "punto": punto_en.get(n, "sin punto"), "paradas": veces,
                                               "retirado [ton]": sum(valor(e[h, n, m, t]) for m in M),
-                                              "volumen retirado [m3]": sum(valor(e[h, n, m, t]) / d["densidad"][m] for m in M)})
+                                              "volumen retirado [m3]": sum(valor(e[h, n, m, t]) / d["delta"][m] for m in M)})
 
     #resumen de cuanto se gasto por cada componente
-    resumen_costos = [{"componente": k, "monto [CLP]": round(valor(c) * MILLON), "% del presupuesto": round(100 * valor(c) * MILLON / d["presupuesto"], 1)} for k, c in costos.items()]
-    resumen_costos.append({"componente": "Total gastado", "monto [CLP]": round(costo_total), "% del presupuesto": round(100 * costo_total / d["presupuesto"], 1)})
-    resumen_costos.append({"componente": "Presupuesto", "monto [CLP]": d["presupuesto"], "% del presupuesto": 100})
+    resumen_costos = [{"componente": k, "monto [CLP]": round(valor(c) * MILLON), "% del presupuesto": round(100 * valor(c) * MILLON / d["b"], 1)} for k, c in costos.items()]
+    resumen_costos.append({"componente": "Total gastado", "monto [CLP]": round(costo_total), "% del presupuesto": round(100 * costo_total / d["b"], 1)})
+    resumen_costos.append({"componente": "Presupuesto", "monto [CLP]": d["b"], "% del presupuesto": 100})
 
     with pd.ExcelWriter(archivo) as excel:
         pd.DataFrame([resumen]).to_excel(excel, sheet_name="Resumen", index=False)
